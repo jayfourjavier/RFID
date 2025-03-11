@@ -1,0 +1,166 @@
+#include <Arduino.h>
+#include <SPI.h>
+#include <SD.h>
+
+const int chipSelect = 53; // Change this if your SD module uses a different pin
+
+// Sample RFID log entries
+String logEntries[] = {
+    "Timestamp,RFID #,Item Name,Action",
+    "2025-03-10 08:19:09,E28011606000022762FF,Gap Gauge,Exit",
+    "2025-03-09 23:56:09,E2801160600002F0F27C,Cable Cutter,Entry",
+    "2025-03-10 06:32:09,E280116060000250687B,Ratchet Screwdriver,Exit",
+    "2025-03-10 06:34:09,E28011606000024613FC,Deburring Tool,Exit",
+    "2025-03-10 00:57:09,E280116060000264C8FD,Ratchet Screwdriver,Entry",
+    "2025-03-10 02:20:09,E2801160600002CD7A09,Micrometer,Entry",
+    "2025-03-10 04:38:09,E28011606000024BBE26,Micrometer,Exit",
+    "2025-03-09 21:54:09,E2801160600002401F0E,Deburring Tool,Exit",
+    "2025-03-09 22:26:09,E280116060000259933C,Deburring Tool,Exit",
+    "2025-03-09 21:13:09,E2801160600002DD0420,Cable Cutter,Entry",
+    "2025-03-10 11:27:09,E2801160600002343CD4,Multimeter,Exit",
+    "2025-03-10 00:52:09,E2801160600002A48204,Inspection Mirror,Exit",
+    "2025-03-09 15:06:09,E28011606000029B0A76,Pneumatic Riveter,Exit",
+    "2025-03-09 17:53:09,E2801160600002F2D9EF,Safety Wire Pliers,Entry",
+    "2025-03-10 01:06:09,E2801160600002B31585,Micrometer,Exit",
+    "2025-03-09 20:21:09,E28011606000024226AE,Deburring Tool,Entry",
+    "2025-03-10 00:55:09,E2801160600002F2663C,Crimping Tool,Entry",
+    "2025-03-09 13:51:09,E2801160600002CCDAC9,Pneumatic Riveter,Exit",
+    "2025-03-10 02:59:09,E28011606000023E9199,Wire Stripper,Exit",
+    "2025-03-09 14:53:09,E2801160600002BD7C96,Hex Key Set,Exit",
+    "2025-03-10 03:45:09,E28011606000024EC277,Wire Stripper,Entry",
+    "2025-03-10 03:24:09,E280116060000289846B,Dial Indicator,Entry",
+    "2025-03-09 16:10:09,E28011606000028D4749,Inspection Mirror,Exit",
+    "2025-03-10 09:14:09,E280116060000217EED7,Hex Key Set,Exit",
+    "2025-03-10 10:56:09,E2801160600002720F73,Dial Indicator,Entry",
+    "2025-03-09 15:56:09,E2801160600002B46385,Borescope,Exit",
+    "2025-03-10 01:00:09,E2801160600002F1CE61,Ratchet Screwdriver,Exit",
+    "2025-03-10 06:16:09,E28011606000021295C0,Borescope,Exit",
+    "2025-03-09 23:49:09,E2801160600002E0B8CC,Pneumatic Riveter,Entry",
+    "2025-03-10 09:15:09,E280116060000227434A,Hex Key Set,Entry",
+    "2025-03-10 07:32:09,E280116060000275F1F8,Safety Wire Pliers,Exit",
+    "2025-03-09 13:22:09,E28011606000027B9BBA,Safety Wire Pliers,Entry",
+    "2025-03-10 08:45:09,E2801160600002B12F06,Pneumatic Riveter,Entry",
+    "2025-03-09 13:06:09,E2801160600002B9AC45,Deburring Tool,Exit",
+    "2025-03-09 23:38:09,E2801160600002AE6AFD,Micrometer,Exit",
+    "2025-03-10 01:22:09,E2801160600002EB2410,Torque Wrench,Exit",
+    "2025-03-10 00:21:09,E28011606000025F602C,Wire Stripper,Entry",
+    "2025-03-10 06:28:09,E28011606000021CE752,Wire Stripper,Exit",
+    "2025-03-10 08:22:09,E2801160600002F9E8BC,Aviation Snips,Entry",
+    "2025-03-10 12:21:09,E2801160600002563387,Cable Cutter,Entry",
+    "2025-03-09 13:02:09,E2801160600002F7F025,Rivet Gun,Exit",
+    "2025-03-09 16:36:09,E2801160600002786B36,Caliper,Exit",
+    "2025-03-10 04:36:09,E28011606000027E87D2,Caliper,Entry",
+    "2025-03-10 12:43:09,E280116060000294A166,Torque Wrench,Entry",
+    "2025-03-10 10:02:09,E28011606000029FBC56,Dial Indicator,Entry",
+    "2025-03-10 01:57:09,E2801160600002794439,Borescope,Exit",
+    "2025-03-09 14:31:09,E280116060000254F155,Deburring Tool,Entry",
+    "2025-03-09 22:33:09,E280116060000228EA4F,Aircraft Drill,Exit",
+    "2025-03-10 07:53:09,E2801160600002B1B951,Gap Gauge,Entry",
+    "2025-03-09 21:22:09,E280116060000245E7A7,Multimeter,Entry",
+    "2025-03-09 16:52:09,E280116060000290BC6C,Micrometer,Entry",
+    "2025-03-10 07:15:09,E2801160600002A23248,Nut Driver,Exit",
+    "2025-03-10 11:30:09,E2801160600002E74254,Ratchet Screwdriver,Exit",
+    "2025-03-09 17:29:09,E2801160600002D2D816,Ratchet Screwdriver,Entry",
+    "2025-03-09 23:02:09,E28011606000024F2A7C,Dial Indicator,Exit",
+    "2025-03-10 02:11:09,E2801160600002438467,Inspection Mirror,Entry",
+    "2025-03-09 14:11:09,E28011606000028292AB,Crimping Tool,Exit",
+    "2025-03-10 11:07:09,E28011606000029D6245,Hex Key Set,Exit",
+    "2025-03-10 11:44:09,E280116060000257EDF1,Multimeter,Entry",
+    "2025-03-09 23:37:09,E28011606000027619EE,Borescope,Entry",
+    "2025-03-10 05:29:09,E28011606000022FC702,Aviation Snips,Entry",
+    "2025-03-10 11:54:09,E2801160600002AF3D5B,Deburring Tool,Exit",
+    "2025-03-09 18:19:09,E2801160600002A912A5,Deburring Tool,Exit",
+    "2025-03-10 02:45:09,E280116060000273377A,Hex Key Set,Entry",
+    "2025-03-10 00:14:09,E28011606000028BBA4B,Hex Key Set,Exit",
+    "2025-03-09 14:26:09,E280116060000217EF6A,Gap Gauge,Entry",
+    "2025-03-09 14:10:09,E2801160600002CFA0D2,Rivet Gun,Exit",
+    "2025-03-10 11:54:09,E2801160600002BBF83C,Safety Wire Pliers,Exit",
+    "2025-03-10 12:46:09,E28011606000025F5348,Pneumatic Riveter,Exit",
+    "2025-03-10 03:04:09,E2801160600002B63D7C,Ratchet Screwdriver,Exit",
+    "2025-03-09 19:27:09,E280116060000233D92C,Micrometer,Exit",
+    "2025-03-10 05:00:09,E280116060000231E263,Aircraft Drill,Exit",
+    "2025-03-09 15:42:09,E28011606000023B441F,Gap Gauge,Entry",
+    "2025-03-09 15:59:09,E2801160600002ACE8D4,Multimeter,Entry",
+    "2025-03-09 17:45:09,E2801160600002C39A20,Pneumatic Riveter,Exit",
+    "2025-03-09 13:18:09,E28011606000023EF13C,Wire Stripper,Exit",
+    "2025-03-10 01:46:09,E2801160600002F6A7DE,Deburring Tool,Entry",
+    "2025-03-09 22:58:09,E28011606000022D069A,Hex Key Set,Entry",
+    "2025-03-10 10:26:09,E2801160600002107024,Dial Indicator,Entry",
+    "2025-03-09 13:47:09,E28011606000029F4C3E,Caliper,Entry",
+    "2025-03-10 05:37:09,E2801160600002F1B03F,Dial Indicator,Exit",
+    "2025-03-09 18:13:09,E2801160600002EBF756,Aviation Snips,Exit",
+    "2025-03-10 11:07:09,E28011606000021B0524,Deburring Tool,Exit",
+    "2025-03-10 05:04:09,E2801160600002233101,Safety Wire Pliers,Exit",
+    "2025-03-10 11:45:09,E28011606000028A21A3,Aviation Snips,Entry",
+    "2025-03-09 13:34:09,E2801160600002A36C34,Micrometer,Exit",
+    "2025-03-09 23:30:09,E28011606000022CE780,Dial Indicator,Entry",
+    "2025-03-10 06:04:09,E2801160600002C4D488,Multimeter,Exit",
+    "2025-03-09 13:44:09,E2801160600002DA2B08,Safety Wire Pliers,Entry",
+    "2025-03-10 11:52:09,E28011606000023A1FB1,Multimeter,Exit",
+    "2025-03-10 07:31:09,E28011606000028AF652,Aviation Snips,Entry",
+    "2025-03-09 13:36:09,E28011606000025330D9,Aircraft Drill,Exit",
+    "2025-03-09 15:06:09,E2801160600002447E37,Safety Wire Pliers,Entry",
+    "2025-03-10 11:05:09,E2801160600002B57431,Cable Cutter,Entry",
+    "2025-03-09 16:51:09,E2801160600002A6951B,Pneumatic Riveter,Exit",
+    "2025-03-09 22:13:09,E2801160600002D786C7,Cable Cutter,Exit",
+    "2025-03-09 14:59:09,E280116060000242CB7C,Crimping Tool,Exit",
+    "2025-03-10 00:43:09,E2801160600002BBFC11,Aircraft Drill,Entry",
+    "2025-03-09 17:32:09,E280116060000273363E,Borescope,Entry",
+    "2025-03-09 22:18:09,E28011606000027453EC,Safety Wire Pliers,Exit"
+
+};
+
+const int logSize = sizeof(logEntries) / sizeof(logEntries[0]);
+
+
+// Function to write data to SD card
+void writeToSD() {
+    const char *filename = "data.txt";
+
+
+    File dataFile = SD.open(filename, FILE_WRITE);
+    
+    if (dataFile) {
+        for (int i = 0; i < logSize; i++) {
+            dataFile.println(logEntries[i]);
+            Serial.println("Writing: " + logEntries[i]); // Print to Serial Monitor
+        }
+        dataFile.close();
+        Serial.println("Write complete.");
+    } else {
+        Serial.println("Error opening data.txt");
+    }
+}
+
+void setup() {
+    Serial.begin(9600);
+    
+    Serial.print("Initializing SD card...");
+    if (!SD.begin(chipSelect)) {
+        Serial.println("SD initialization failed!");
+        return;
+    }
+    Serial.println("SD initialization done.");
+
+    // Check if file exists
+    if (SD.exists("data.txt")) {
+        Serial.println("File does not exist. Creating file...");
+        File file = SD.open("data.txt", FILE_WRITE);
+        if (file) {
+            Serial.println("Writing data to file...");
+            for (String entry : logEntries) {
+                file.println(entry);
+            }
+            file.close();
+            Serial.println("File created and data written successfully.");
+        } else {
+            Serial.println("Error creating file!");
+        }
+    } else {
+        Serial.println("File already exists.");
+    }
+}
+
+void loop() {
+    // Do nothing
+}

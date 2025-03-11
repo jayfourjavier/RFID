@@ -3,16 +3,40 @@
 #include <SD.h>
 
 RTC_DS3231 rtc;
-DateTime timeToSync;
-
+DateTime timeToSync, timeToLog;
 unsigned long timestamp = 1710012345;
 String stickerId = "";            // General scanned RFID
 String stickerIdToEnroll = "";    // RFID to be enrolled
 String itemToEnroll = "";         // Item name to enroll
 bool awaitingEnrollment = false;  // Flag to track ENROLL state
 bool awaitingTimeSync = false;    // Flag to track time sync request
+bool awaitingLogSync = false;    // Flag to track time sync request
+bool isGoingOut = false;
 String enrollData;
 const int chipSelect = 53;
+
+// Define a struct for log entries
+struct logEntry {
+  String timestamp;
+  String rfid;
+  String itemName;
+  String action;
+};
+
+logEntry entryToLog;
+
+// Sample RFID log entries
+String logEntries[] = {
+  //"Timestamp,RFID #,Item Name,Action",
+  "2025-03-09 16:51:09,E2801160600002A6951B,Pneumatic Riveter,Exit",
+  "2025-03-09 22:13:09,E2801160600002D786C7,Cable Cutter,Exit",
+  "2025-03-09 14:59:09,E280116060000242CB7C,Crimping Tool,Exit",
+  "2025-03-10 00:43:09,E2801160600002BBFC11,Aircraft Drill,Entry",
+  "2025-03-09 17:32:09,E280116060000273363E,Borescope,Entry",
+  "2025-03-09 22:18:09,E28011606000027453EC,Safety Wire Pliers,Exit"
+};
+
+
 
 // 📌 Simulated function for general RFID scanning
 String scanRfid() {
@@ -54,7 +78,7 @@ void receiveDateTime() {
 }
 
 // 📌 Function to Scan & Store RFID for Enrollment
-void scanRfidToEnroll() {
+void scanRfidToenrollRfid() {
   stickerIdToEnroll = scanRfid();
   Serial.println("RFID_SCANNED:" + stickerIdToEnroll);
 }
@@ -70,6 +94,52 @@ bool enrollRfid(String _item, String _rfid) {
   }
 }
 
+
+// Function to get the current time and return it as a formatted string
+String getTime() {
+  DateTime now = rtc.now(); // Get current time from RTC
+  String _dateTime = String(now.year()) + "-" + 
+              String(now.month()) + "-" + 
+              String(now.day()) + " " + 
+              String(now.hour()) + ":" + 
+              String(now.minute()) + ":" + 
+              String(now.second());
+
+  Serial.print("Current Timestamp: " + _dateTime + " | "); // Debugging output
+  return _dateTime;
+}
+
+// Function to prepare a log entry as a formatted string
+String prepareLog() {
+  entryToLog.timestamp = getTime();  // Get and format timestamp
+  entryToLog.action = "Exit";  // Set action
+  //entry.itemName = "Test Item";  // Set item name
+  //entry.rfid = "E2801160600002D786C7";  // Set RFID tag
+  
+  // Format log entry
+  String logLine = entryToLog.timestamp + "," + entryToLog.rfid + "," + entryToLog.itemName + "," + entryToLog.action;
+  
+  // Print the log for debugging
+  Serial.println("Prepared Log Entry: " + logLine);
+  
+  return logLine;
+}
+
+void writeLogs(){
+  // Open a file for writing
+  File dataFile = SD.open("data.txt", FILE_WRITE);
+
+  // Check if the file is open
+  if (dataFile) {
+    Serial.println("Writing to test.txt...");
+    dataFile.println(prepareLog());
+    dataFile.close(); // Close the file
+    Serial.println("Write done.");
+  } else {
+    Serial.println("Error opening test.txt");
+  }
+}
+
 // 📌 Function to Process Enrollment Data
 void processEnrollData(String data) {
   int commaIndex = data.indexOf(',');
@@ -78,12 +148,18 @@ void processEnrollData(String data) {
     itemToEnroll = data.substring(0, commaIndex);
     stickerIdToEnroll = data.substring(commaIndex + 1);
 
-    itemToEnroll.trim();
-    stickerIdToEnroll.trim();
+    itemToEnroll.trim();  // Trim in place
+    stickerIdToEnroll.trim();  // Trim in place
+    
+    entryToLog.itemName = itemToEnroll;  // Assign after trimming
+    entryToLog.rfid = stickerIdToEnroll;  // Assign after trimming
+    
 
     Serial.print("🛠️ Enrolling:");
     Serial.print(" Item: " + itemToEnroll);
     Serial.println(" | RFID: " + stickerIdToEnroll);
+
+    writeLogs();
 
     // Perform Enrollment
     bool success = enrollRfid(itemToEnroll, stickerIdToEnroll);
@@ -99,7 +175,7 @@ void processEnrollData(String data) {
   awaitingEnrollment = false;  // Reset flag
 }
 
-void enroll(){
+void enrollRfid(){
   if (awaitingEnrollment) {
     enrollData = Serial.readStringUntil('\n');
     processEnrollData(enrollData);
@@ -110,18 +186,22 @@ void processSerialCommand(String command) {
   command.trim();
 
   if (command == "SCAN_NOW") {
-    Serial.println("🔍 Scan RFID now...");
+    Serial.println("Scan RFID now...");
     stickerId = scanRfid();
     Serial.println("RFID_SCANNED:" + stickerId);
   } 
   else if (command == "ENROLL") {
-    Serial.println("📥 Received: ENROLL");
+    Serial.println("Received: ENROLL");
     Serial.println("Waiting for item name and RFID...");
     awaitingEnrollment = true;
   } 
   else if (command == "SYNC_TIME") {
-    Serial.println("⏳ Received: SYNC_TIME. Send time in format YYYY-MM-DD HH:MM:SS");
+    Serial.println("Received: SYNC_TIME. Send time in format YYYY-MM-DD HH:MM:SS");
     awaitingTimeSync = true;  // Wait for time input
+  } 
+  else if (command == "SYNC_LOGS") {
+    Serial.println("Received: SYNC_LOG.");
+    awaitingLogSync = true;  // Wait for time input
   } 
   else {
     Serial.println("❌ Unknown command.");
@@ -137,24 +217,30 @@ void setupSdCard (){
   }
   Serial.println("Initialization done.");
 
-  SD.remove("test.txt");
+  //SD.remove("data.txt");
 
+  /* Check if the file is open
   // Open a file for writing
-  File dataFile = SD.open("test.txt", FILE_WRITE);
+  File dataFile = SD.open("data.txt", FILE_WRITE);
 
-  // Check if the file is open
   if (dataFile) {
     Serial.println("Writing to test.txt...");
-    dataFile.println("true");
+       // Loop through each entry and write to the file
+       for (unsigned long i = 0; i < sizeof(logEntries) / sizeof(logEntries[0]); i++) {
+        dataFile.println(logEntries[i]);
+        Serial.println(logEntries[i]);  // Print to Serial Monitor
+      }
+
     dataFile.close(); // Close the file
     Serial.println("Write done.");
   } else {
     Serial.println("Error opening test.txt");
-  }
+  } 
+    */
 
   // Now read the file back
-  Serial.println("Reading from test.txt...");
-  dataFile = SD.open("test.txt");
+  Serial.println("Reading from logs.txt...");
+  File dataFile = SD.open("data.txt");
   if (dataFile) {
     while (dataFile.available()) {
       Serial.write(dataFile.read());
@@ -162,10 +248,33 @@ void setupSdCard (){
     dataFile.close(); // Close the file
     Serial.println("\nRead done.");
   } else {
-    Serial.println("Error opening test.txt");
+    Serial.println("Error opening data.txt");
   }
 
 }
+
+void syncLogs() {
+  if (awaitingLogSync) {
+      Serial.println("START_LOGS");  // 🔥 Notify Python that logs are starting
+      
+      File logFile = SD.open("data.txt");  // Open the log file on SD card
+      if (logFile) {
+          while (logFile.available()) {
+              Serial.println(logFile.readStringUntil('\n'));  // Send line by line
+              delay(100);  // Prevent buffer overflow
+          }
+          logFile.close();
+      } else {
+          Serial.println("ERROR: Cannot open logs.txt");  // Error handling
+      }
+
+      Serial.println("END_LOGS");  // 🔥 Notify Python that logs are done
+      awaitingLogSync = false;  // Reset flag
+  }
+}
+
+
+
 
 void setup() {
   Serial.begin(9600);
@@ -188,9 +297,11 @@ void loop() {
 
   // 🔹 Listen for time sync data separately
   receiveDateTime();
-  enroll();
+  enrollRfid();
+  syncLogs();
 
   // Debugging timestamp
-  //Serial.println(timestamp);
-  //delay(1000);
+  //Serial.println(prepareLog());
+  //writeLogs();
+  delay(1000);
 }
